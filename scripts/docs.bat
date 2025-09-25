@@ -1,0 +1,1 @@
+pdoc C:\Users\MoMe\Desktop\dataminer_sdk\src\dataminer_sdk --output-dir docs --docformat google -t C:\Python312\Lib\site-packages\pdoc\templates\onedark

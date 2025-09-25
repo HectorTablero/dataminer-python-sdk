@@ -89,6 +89,6 @@ def process_folder(pkg_path: Path, package: str) -> str:
 
 
 if __name__ == "__main__":
-    folder = "../src/dataminer_sdk/models"
-    pkg = "dataminer_sdk.models"
+    folder = "../src/dataminer_sdk"
+    pkg = "dataminer_sdk"
     print(process_folder(Path(folder), pkg))
