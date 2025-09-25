@@ -1,3 +1,3 @@
-# Unsupported transport mode exception
 class UnsupportedTransportMode(Exception):
+    """Exception raised for unsupported transport modes."""
     pass

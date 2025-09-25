@@ -1,16 +1,25 @@
+"""
+Core DataMiner API connector module.
+
+Provides the base synchronous and asynchronous connector classes for interacting
+with the DataMiner API. Supports both SOAP and URL GET transport modes.
+"""
+
 import requests
 import httpx
-from ..utils.decorators import auto_async_methods
-from .enums import TransportMode, SOAPVersion
-from .exceptions import UnsupportedTransportMode
+from dataminer_sdk.utils.decorators import auto_async_methods
+from dataminer_sdk.api.enums import TransportMode, SOAPVersion
+from dataminer_sdk.api.exceptions import UnsupportedTransportMode
 from urllib.parse import urlencode
 from typing import Optional, Tuple
 
 
 class BaseConnector:
     """
-    DataMiner API connector supporting hybrid sync/async calls.
-    Supports SOAP and URL GET modes.
+    Base class for connecting to the DataMiner API.
+
+    Supports both synchronous and asynchronous calls, SOAP and URL transport
+    modes, automatic reconnection, and optional HTTPS detection.
     """
 
     def __init__(
@@ -27,6 +36,22 @@ class BaseConnector:
         use_https: Optional[bool] = None,
         use_2fa: bool = False,
     ):
+        """
+        Initialize a new BaseConnector.
+
+        Args:
+            hostname: DataMiner server hostname.
+            username: Username for authentication.
+            password: Password for authentication.
+            client_app_name: Name of the client application.
+            client_app_version: Version of the client application.
+            client_computer_name: Name of the client computer.
+            transport_mode: Default transport mode (SOAP or URL).
+            soap_version: SOAP version to use (SOAP11 or SOAP12).
+            auto_reconnect: Automatically reconnect if the token is missing.
+            use_https: Force HTTPS if True, HTTP if False, autodetect if None.
+            use_2fa: Whether to use two-factor authentication (not yet implemented).
+        """
         self._hostname = hostname
         self._username = username
         self._password = password
@@ -52,6 +77,16 @@ class BaseConnector:
     def _connect(
         self, async_: bool = False, transport_mode: Optional[TransportMode] = None
     ):
+        """
+        Establish a connection with the DataMiner API.
+
+        Args:
+            async_: Whether to perform the connection asynchronously.
+            transport_mode: Override transport mode for this call.
+
+        Returns:
+            API response content.
+        """
         params = {
             "host": self._hostname,
             "login": self._username,
@@ -66,6 +101,12 @@ class BaseConnector:
 
     @property
     def connection_token(self):
+        """
+        Return the current connection token.
+
+        If no token is set and auto-reconnect is enabled, attempts to
+        establish a new connection. Raises if 2FA is enabled.
+        """
         if not self._connection_token and self._auto_reconnect:
             if self._use_2fa:
                 raise NotImplementedError("2FA is not implemented yet.")
@@ -73,6 +114,12 @@ class BaseConnector:
         return self._connection_token
 
     def _ping_https(self) -> bool:
+        """
+        Test whether HTTPS is supported by the server.
+
+        Returns:
+            True if HTTPS responds with status 200, False otherwise.
+        """
         test_url = f"https://{self._hostname}/API/v1/soap.asmx"
         try:
             resp = requests.get(test_url, timeout=3, verify=False)
@@ -87,6 +134,18 @@ class BaseConnector:
         async_: bool = False,
         transport_mode: Optional[TransportMode] = TransportMode.SOAP,
     ):
+        """
+        Call the DataMiner API using sync or async mode.
+
+        Args:
+            method: API method name.
+            params: API parameters.
+            async_: Whether to call asynchronously.
+            transport_mode: Transport mode (SOAP or URL).
+
+        Returns:
+            API response content.
+        """
         if async_:
             return self._call_api_async(method, params, transport_mode)
         else:
@@ -97,6 +156,20 @@ class BaseConnector:
     def _call_api_sync(
         self, method: str, params: dict, transport_mode: Optional[TransportMode]
     ):
+        """
+        Perform a synchronous API call.
+
+        Args:
+            method: API method name.
+            params: API parameters.
+            transport_mode: Transport mode (SOAP or URL).
+
+        Returns:
+            API response content.
+
+        Raises:
+            UnsupportedTransportMode: If the transport mode is invalid.
+        """
         if transport_mode == TransportMode.SOAP:
             return self._call_soap(params, method)
         elif transport_mode == TransportMode.URL:
@@ -107,12 +180,32 @@ class BaseConnector:
             )
 
     def _call_url(self, params: dict, method: str):
+        """
+        Perform a synchronous URL GET request.
+
+        Args:
+            params: Query parameters.
+            method: API method name.
+
+        Returns:
+            Response content as a UTF-8 string.
+        """
         url = self._get_api_content_url(params, method)
         resp = requests.get(url, verify=False)
         resp.raise_for_status()
         return resp.content.decode("utf-8")
 
     def _call_soap(self, params: dict, method: str):
+        """
+        Perform a synchronous SOAP request.
+
+        Args:
+            params: Request parameters.
+            method: API method name.
+
+        Returns:
+            Response content as a UTF-8 string.
+        """
         envelope, headers = self._get_api_content_soap(params, method)
 
         resp = requests.post(self._url, data=envelope, headers=headers, verify=False)
@@ -124,6 +217,20 @@ class BaseConnector:
     async def _call_api_async(
         self, method: str, params: dict, transport_mode: Optional[TransportMode]
     ):
+        """
+        Perform an asynchronous API call.
+
+        Args:
+            method: API method name.
+            params: API parameters.
+            transport_mode: Transport mode (SOAP or URL).
+
+        Returns:
+            API response content.
+
+        Raises:
+            UnsupportedTransportMode: If the transport mode is invalid.
+        """
         if transport_mode == TransportMode.SOAP:
             return await self._call_soap_async(params, method)
         elif transport_mode == TransportMode.URL:
@@ -134,6 +241,16 @@ class BaseConnector:
             )
 
     async def _call_url_async(self, params: dict, method: str):
+        """
+        Perform an asynchronous URL GET request.
+
+        Args:
+            params: Query parameters.
+            method: API method name.
+
+        Returns:
+            Response text.
+        """
         async with httpx.AsyncClient() as client:
             url = self._get_api_content_url(params, method)
             resp = await client.get(url)
@@ -141,6 +258,16 @@ class BaseConnector:
             return resp.text
 
     async def _call_soap_async(self, params: dict, method: str):
+        """
+        Perform an asynchronous SOAP request.
+
+        Args:
+            params: Request parameters.
+            method: API method name.
+
+        Returns:
+            Response text.
+        """
         envelope, headers = self._get_api_content_soap(params, method)
     
         async with httpx.AsyncClient() as client:
@@ -151,10 +278,30 @@ class BaseConnector:
     # --- API Call Content ---
 
     def _get_api_content_url(self, params: dict, method: str) -> str:
+        """
+        Build the full URL for a URL transport API call.
+
+        Args:
+            params: Query parameters.
+            method: API method name.
+
+        Returns:
+            Fully qualified URL string.
+        """
         qs = urlencode(params)
         return f"{self._url}/{method}?{qs}"
 
     def _get_api_content_soap(self, params: dict, method: str) -> Tuple[str, dict]:
+        """
+        Build the SOAP envelope and headers for a SOAP request.
+
+        Args:
+            params: Request parameters.
+            method: API method name.
+
+        Returns:
+            A tuple of (SOAP envelope XML string, HTTP headers dict).
+        """
         body = "".join(f"<{k}>{v}</{k}>" for k, v in params.items())
         soap = "soap" if self._soap_version == SOAPVersion.SOAP11 else "soap12"
         envelope = f"""<?xml version="1.0" encoding="utf-8"?>
@@ -185,4 +332,10 @@ class BaseConnector:
 # This is the class that will be used by the users of the SDK
 @auto_async_methods
 class DataMinerConnector(BaseConnector):
+    """
+    High-level DataMiner API connector.
+
+    Inherits from BaseConnector and automatically adds async variants of
+    all synchronous methods using the ``auto_async_methods`` decorator.
+    """
     pass
