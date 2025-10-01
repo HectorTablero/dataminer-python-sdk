@@ -771,6 +771,9 @@ class DMAAlarmTemplateCondition(BaseDMAType):
     Name: Optional[str] = field(
         default=None, metadata={"doc": "The name of the condition."}
     )
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class DMAAlarm(BaseDMAType):
     """
     Represents a DataMiner Alarm object.
 
