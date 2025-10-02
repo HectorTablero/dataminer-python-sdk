@@ -11,7 +11,7 @@ import httpx
 from dataminer_sdk.utils.decorators import auto_async_methods
 from dataminer_sdk.api.enums import TransportMode, SOAPVersion
 from dataminer_sdk.api.exceptions import UnsupportedTransportMode
-from dataminer_sdk.utils.xml import extract_result
+from dataminer_sdk.utils.xml import parse_xml_response
 from urllib.parse import urlencode
 from typing import Optional, Tuple
 
@@ -100,11 +100,12 @@ class BaseConnector:
             "clientAppVersion": self._client_app_version,
             "clientComputerName": self._client_computer_name,
         }
-        self._connection_token = extract_result(
+        self._connection_token = parse_xml_response(
             "ConnectApp",
             self._call_api(
                 "ConnectApp", params, async_=False, transport_mode=transport_mode
             ),  # type: ignore
+            str
         )
 
     @property

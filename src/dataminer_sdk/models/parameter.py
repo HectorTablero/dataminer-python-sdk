@@ -404,7 +404,7 @@ class DMAParameterInfo(BaseDMAType):
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
-class DMAParameter(DMAParameterInfo):
+class DMAParameter(BaseDMAType):
     """
     Represents DMA Parameter.
 
