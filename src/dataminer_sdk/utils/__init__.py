@@ -4,5 +4,5 @@
 from .decorators import auto_async_methods
 
 __all__ = [
-    'auto_async_methods',
+    "auto_async_methods",
 ]

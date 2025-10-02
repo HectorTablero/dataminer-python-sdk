@@ -6,9 +6,9 @@ from .enums import SOAPVersion, TransportMode
 from .exceptions import UnsupportedTransportMode
 
 __all__ = [
-    'BaseConnector',
-    'DataMinerConnector',
-    'SOAPVersion',
-    'TransportMode',
-    'UnsupportedTransportMode',
+    "BaseConnector",
+    "DataMinerConnector",
+    "SOAPVersion",
+    "TransportMode",
+    "UnsupportedTransportMode",
 ]

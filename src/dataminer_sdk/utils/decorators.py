@@ -9,7 +9,7 @@ def auto_async_methods(cls):
 
     For each callable attribute of the class that does not start with an
     underscore (`_`) and does not already contain `"async_"` in its name,
-    this decorator creates a new method with the suffix `"_async"`.  
+    this decorator creates a new method with the suffix `"_async"`.
 
     The generated async method calls the original synchronous method with
     the same arguments, but forces the keyword argument `async_ = True`.

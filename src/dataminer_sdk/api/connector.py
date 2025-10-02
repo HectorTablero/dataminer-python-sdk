@@ -7,11 +7,19 @@ with the DataMiner API. Supports both SOAP and URL GET transport modes.
 
 import requests
 import httpx
+# from dataminer_sdk.api.mixins.parameter import ParameterMixin
 from dataminer_sdk.utils.decorators import auto_async_methods
 from dataminer_sdk.api.enums import TransportMode, SOAPVersion
 from dataminer_sdk.api.exceptions import UnsupportedTransportMode
+from dataminer_sdk.utils.xml import extract_result
 from urllib.parse import urlencode
 from typing import Optional, Tuple
+
+# TEMP: Disable insecure request warnings for self-signed certs
+import urllib3
+import warnings
+
+warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
 
 
 class BaseConnector:
@@ -31,7 +39,7 @@ class BaseConnector:
         client_app_version: str = "1.0",
         client_computer_name: str = "Unset",
         transport_mode: TransportMode = TransportMode.URL,
-        soap_version: SOAPVersion = SOAPVersion.SOAP12,
+        soap_version: SOAPVersion = SOAPVersion.SOAP11,
         auto_reconnect: bool = True,
         use_https: Optional[bool] = None,
         use_2fa: bool = False,
@@ -74,14 +82,11 @@ class BaseConnector:
 
     # --- Connection Management ---
 
-    def _connect(
-        self, async_: bool = False, transport_mode: Optional[TransportMode] = None
-    ):
+    def _connect(self, transport_mode: Optional[TransportMode] = None):
         """
         Establish a connection with the DataMiner API.
 
         Args:
-            async_: Whether to perform the connection asynchronously.
             transport_mode: Override transport mode for this call.
 
         Returns:
@@ -95,8 +100,11 @@ class BaseConnector:
             "clientAppVersion": self._client_app_version,
             "clientComputerName": self._client_computer_name,
         }
-        return self._call_api(
-            "ConnectApp", params, async_=async_, transport_mode=transport_mode
+        self._connection_token = extract_result(
+            "ConnectApp",
+            self._call_api(
+                "ConnectApp", params, async_=False, transport_mode=transport_mode
+            ),  # type: ignore
         )
 
     @property
@@ -110,7 +118,8 @@ class BaseConnector:
         if not self._connection_token and self._auto_reconnect:
             if self._use_2fa:
                 raise NotImplementedError("2FA is not implemented yet.")
-            return self._connect()
+            self._connect()
+            return self._connection_token
         return self._connection_token
 
     def _ping_https(self) -> bool:
@@ -131,8 +140,9 @@ class BaseConnector:
         self,
         method: str,
         params: dict,
-        async_: bool = False,
         transport_mode: Optional[TransportMode] = TransportMode.SOAP,
+        async_: bool = False,
+        _attempted_reconnect: bool = False,
     ):
         """
         Call the DataMiner API using sync or async mode.
@@ -140,16 +150,29 @@ class BaseConnector:
         Args:
             method: API method name.
             params: API parameters.
-            async_: Whether to call asynchronously.
             transport_mode: Transport mode (SOAP or URL).
 
         Returns:
             API response content.
         """
-        if async_:
-            return self._call_api_async(method, params, transport_mode)
-        else:
-            return self._call_api_sync(method, params, transport_mode)
+        transport_mode = transport_mode or self._transport_mode
+        try:
+            if async_:
+                return self._call_api_async(method, params, transport_mode)
+            else:
+                return self._call_api_sync(method, params, transport_mode)
+        except (requests.HTTPError, httpx.RequestError):
+            if self._auto_reconnect and not _attempted_reconnect:
+                self._connection_token = None  # Force reconnect next time
+                return self._call_api(
+                    method,
+                    params,
+                    async_=async_,
+                    transport_mode=transport_mode,
+                    _attempted_reconnect=True,
+                )
+            else:
+                raise
 
     # --- Synchronous Calls ---
 
@@ -269,12 +292,12 @@ class BaseConnector:
             Response text.
         """
         envelope, headers = self._get_api_content_soap(params, method)
-    
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(self._url, data=envelope, headers=headers)  # type: ignore
             resp.raise_for_status()
             return resp.text
-        
+
     # --- API Call Content ---
 
     def _get_api_content_url(self, params: dict, method: str) -> str:
@@ -315,7 +338,7 @@ class BaseConnector:
     </{method}>
   </{soap}:Body>
 </{soap}:Envelope>"""
-        
+
         if self._soap_version == SOAPVersion.SOAP12:
             headers = {
                 "Content-Type": "application/soap+xml; charset=utf-8",
@@ -338,4 +361,5 @@ class DataMinerConnector(BaseConnector):
     Inherits from BaseConnector and automatically adds async variants of
     all synchronous methods using the ``auto_async_methods`` decorator.
     """
+
     pass
